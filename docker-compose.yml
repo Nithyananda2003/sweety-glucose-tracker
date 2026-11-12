@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sweety
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sweety_local}
+      POSTGRES_DB: sweety
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - sweety_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sweety -d sweety']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  app:
+    build: .
+    profiles: ['full']
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment: &app_environment
+      DATABASE_URL: postgresql://sweety:${POSTGRES_PASSWORD:-sweety_local}@db:5432/sweety
+      NODE_ENV: development
+      APP_ORIGIN: http://localhost:3001
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Kolkata}
+      PORT: 3001
+      DEMO_EMAIL: ${DEMO_EMAIL:-demo@sweety.app}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-SweetyDemo123!}
+      DEMO_DOCTOR_EMAIL: ${DEMO_DOCTOR_EMAIL:-doctor@sweety.app}
+      DEMO_DOCTOR_PASSWORD: ${DEMO_DOCTOR_PASSWORD:-SweetyDoctor123!}
+      REDIS_URL: redis://redis:6379
+      REPORT_CACHE_TTL_SECONDS: ${REPORT_CACHE_TTL_SECONDS:-300}
+      REMINDER_CRON: ${REMINDER_CRON:-0 0 21 * * *}
+    ports:
+      - '127.0.0.1:3001:3001'
+    command: ['sh', '-c', 'node server/src/migrate.js && node server/src/index.js']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - sweety_redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  worker:
+    build: .
+    profiles: ['full']
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment: *app_environment
+    command: ['node', 'server/src/worker.js']
+    restart: unless-stopped
+volumes:
+  sweety_data:
+  sweety_redis:
