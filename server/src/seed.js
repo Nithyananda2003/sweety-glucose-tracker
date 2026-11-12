@@ -14,10 +14,29 @@ export async function seed(db = pool) {
     await client.query('BEGIN');
     const result = await client.query(
       `INSERT INTO users (name,email,password_hash) VALUES ($1,$2,$3)
-      ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash RETURNING id`,
+      ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash
+      WHERE users.role='patient' RETURNING id`,
       ['Alex Morgan', email, passwordHash],
     );
+    if (!result.rows.length) throw new Error('DEMO_EMAIL must identify a patient account.');
     const userId = result.rows[0].id;
+    const doctorEmail = (process.env.DEMO_DOCTOR_EMAIL || 'doctor@sweety.app').trim().toLowerCase();
+    const doctorHash = await bcrypt.hash(
+      process.env.DEMO_DOCTOR_PASSWORD || 'SweetyDoctor123!',
+      12,
+    );
+    const doctorResult = await client.query(
+      `INSERT INTO users (name,email,password_hash,role)
+      VALUES ($1,$2,$3,'doctor') ON CONFLICT (email) DO UPDATE SET
+      name=EXCLUDED.name,password_hash=EXCLUDED.password_hash WHERE users.role='doctor' RETURNING id`,
+      ['Dr. Jamie Chen', doctorEmail, doctorHash],
+    );
+    if (!doctorResult.rows.length)
+      throw new Error('DEMO_DOCTOR_EMAIL must be a separate doctor account.');
+    await client.query(
+      'INSERT INTO doctor_patients (doctor_id,patient_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [doctorResult.rows[0].id, userId],
+    );
     const today = todayInZone(config.timezone);
     const end = new Date(`${today}T00:00:00Z`);
     const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1));

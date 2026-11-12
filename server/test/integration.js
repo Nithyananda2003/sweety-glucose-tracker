@@ -39,10 +39,11 @@ after(async () => {
 test('register, bcrypt storage, cookie flags, normalized email and duplicate account', async () => {
   const result = await alice
     .post('/api/auth/register')
-    .send({ name: 'Alice', email: ' ALICE@example.com ', password: 'password123!' })
+    .send({ name: 'Alice', email: ' ALICE@example.com ', password: 'password123!', role: 'doctor' })
     .expect(201);
   aliceId = result.body.user.id;
-  assert.deepEqual(Object.keys(result.body.user).sort(), ['email', 'id', 'name']);
+  assert.deepEqual(Object.keys(result.body.user).sort(), ['email', 'id', 'name', 'role']);
+  assert.equal(result.body.user.role, 'patient');
   assert.equal(result.body.user.email, 'alice@example.com');
   assert.match(result.headers['set-cookie'][0], /HttpOnly/);
   assert.match(result.headers['set-cookie'][0], /SameSite=Lax/);

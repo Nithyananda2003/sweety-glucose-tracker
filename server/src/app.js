@@ -23,11 +23,12 @@ const publicReading = 'id, date::text, slot, value, created_at, updated_at';
 const slotOrder =
   "CASE slot WHEN 'morning' THEN 1 WHEN 'after_breakfast' THEN 2 WHEN 'after_lunch' THEN 3 ELSE 4 END";
 const fail = (res, status, error) => res.status(status).json({ error });
-const safeUser = ({ id, name, email }) => ({ id, name, email });
+const safeUser = ({ id, name, email, role }) => ({ id, name, email, role });
 const validId = (id) => /^[1-9]\d*$/.test(id) && Number(id) <= 2147483647;
 
 export function createApp(db, overrides = {}) {
   const config = { ...defaults, ...overrides };
+  const cache = overrides.reportCache;
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -59,13 +60,22 @@ export function createApp(db, overrides = {}) {
     if (!token || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token))
       return fail(res, 401, 'Please log in to continue.');
     const result = await db.query(
-      `SELECT u.id, u.name, u.email FROM sessions s JOIN users u ON u.id=s.user_id
+      `SELECT u.id, u.name, u.email, u.role FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.token_hash=$1 AND s.expires_at > now()`,
       [hash(token)],
     );
     if (!result.rows.length)
       return fail(res, 401, 'Your session has expired. Please log in again.');
     req.user = result.rows[0];
+    next();
+  };
+  const requirePatient = (req, res, next) => {
+    if (req.user.role !== 'patient')
+      return fail(res, 403, 'Only patient accounts can manage readings.');
+    next();
+  };
+  const requireDoctor = (req, res, next) => {
+    if (req.user.role !== 'doctor') return fail(res, 403, 'Doctor access is required.');
     next();
   };
   const createSession = async (user, res) => {
@@ -104,7 +114,7 @@ export function createApp(db, overrides = {}) {
     const passwordHash = await bcrypt.hash(password, 12);
     try {
       const result = await db.query(
-        'INSERT INTO users (name,email,password_hash) VALUES ($1,$2,$3) RETURNING id,name,email',
+        'INSERT INTO users (name,email,password_hash) VALUES ($1,$2,$3) RETURNING id,name,email,role',
         [name.trim(), email.trim().toLowerCase(), passwordHash],
       );
       await createSession(result.rows[0], res);
@@ -125,9 +135,10 @@ export function createApp(db, overrides = {}) {
       Buffer.byteLength(password) > 72
     )
       return fail(res, 401, 'Email or password is incorrect.');
-    const result = await db.query('SELECT id,name,email,password_hash FROM users WHERE email=$1', [
-      email.trim().toLowerCase(),
-    ]);
+    const result = await db.query(
+      'SELECT id,name,email,role,password_hash FROM users WHERE email=$1',
+      [email.trim().toLowerCase()],
+    );
     const user = result.rows[0];
     const matches = await bcrypt.compare(password, user?.password_hash || dummyHash);
     if (!user || !matches) return fail(res, 401, 'Email or password is incorrect.');
@@ -142,7 +153,7 @@ export function createApp(db, overrides = {}) {
     res.clearCookie(cookieName, cookieOptions).sendStatus(204);
   });
 
-  app.use('/api/readings', requireAuth);
+  app.use('/api/readings', requireAuth, requirePatient);
   app.get('/api/readings', async (req, res) => {
     const { from, to } = req.query;
     const page = req.query.page === undefined ? 1 : Number(req.query.page);
@@ -214,6 +225,7 @@ export function createApp(db, overrides = {}) {
             [date, slot, value, req.user.id],
           );
       if (!result.rows.length) return fail(res, 404, 'Reading not found.');
+      await cache?.invalidate(req.user.id);
       res.status(editing ? 200 : 201).json({ reading: result.rows[0] });
     } catch (error) {
       if (error.code === '23505')
@@ -234,18 +246,26 @@ export function createApp(db, overrides = {}) {
       req.user.id,
     ]);
     if (!result.rows.length) return fail(res, 404, 'Reading not found.');
+    await cache?.invalidate(req.user.id);
     res.sendStatus(204);
   });
 
-  app.get('/api/reports', requireAuth, async (req, res) => {
+  const sendReports = async (req, res, userId) => {
     const { date } = req.query;
     if (!isDate(date)) return fail(res, 400, 'Please select a valid date.');
     if (date > todayInZone(config.timezone)) return fail(res, 400, 'Date cannot be in the future.');
     const ranges = reportRanges(date);
+    const revisionResult = await db.query('SELECT reading_revision FROM users WHERE id=$1', [
+      userId,
+    ]);
+    const revision = revisionResult.rows[0].reading_revision;
+    const cached = await cache?.get(userId, revision, date);
+    res.set('X-Report-Cache', cache?.isReady() ? (cached ? 'HIT' : 'MISS') : 'BYPASS');
+    if (cached) return res.json(cached);
     // One statement gives all three reports a consistent database snapshot.
     const result = await db.query(
       `SELECT ${publicReading} FROM readings WHERE user_id=$1 AND date BETWEEN $2 AND $3 ORDER BY date, ${slotOrder}`,
-      [req.user.id, ranges.monthly.from, date],
+      [userId, ranges.monthly.from, date],
     );
     const reports = Object.fromEntries(
       Object.entries(ranges).map(([key, range]) => {
@@ -262,7 +282,34 @@ export function createApp(db, overrides = {}) {
       grouped.get(row.date).push(row);
     }
     const trend = [...grouped].map(([day, rows]) => ({ date: day, ...summarize(rows) }));
-    res.json({ date, ...reports, trend });
+    const report = { date, ...reports, trend };
+    await cache?.set(userId, revision, date, report);
+    res.json(report);
+  };
+  app.get('/api/reports', requireAuth, requirePatient, (req, res) =>
+    sendReports(req, res, req.user.id),
+  );
+
+  app.use('/api/doctor', requireAuth, requireDoctor);
+  app.get('/api/doctor/patients', async (req, res) => {
+    const result = await db.query(
+      `SELECT u.id,u.name,u.email FROM users u
+      JOIN doctor_patients dp ON dp.patient_id=u.id
+      WHERE dp.doctor_id=$1 AND u.role='patient' ORDER BY u.name,u.id`,
+      [req.user.id],
+    );
+    res.json({ patients: result.rows });
+  });
+  app.get('/api/doctor/patients/:patientId/reports', async (req, res) => {
+    if (!validId(req.params.patientId)) return fail(res, 404, 'Patient not found.');
+    // Always authorize before reading the cache, including on every cache hit.
+    const assigned = await db.query(
+      `SELECT u.id FROM users u JOIN doctor_patients dp ON dp.patient_id=u.id
+      WHERE dp.doctor_id=$1 AND u.id=$2 AND u.role='patient'`,
+      [req.user.id, req.params.patientId],
+    );
+    if (!assigned.rows.length) return fail(res, 404, 'Patient not found.');
+    return sendReports(req, res, assigned.rows[0].id);
   });
 
   app.use('/api', (_req, res) => fail(res, 404, 'Endpoint not found.'));

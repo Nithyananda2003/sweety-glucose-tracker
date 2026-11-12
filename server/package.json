@@ -8,15 +8,19 @@
     "db:migrate": "node src/migrate.js",
     "db:seed": "node src/seed.js",
     "test": "node --test test/*.test.js",
-    "test:integration": "node --test test/integration.js"
+    "test:integration": "node --test test/integration.js",
+    "test:services": "node --test test/services.integration.js",
+    "worker": "node src/worker.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.7.5",
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
+    "ioredis": "^6.0.0",
     "pg": "^8.16.3"
   },
   "devDependencies": {
