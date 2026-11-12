@@ -33,9 +33,14 @@ Docker, React Testing Library tests, Redis caching, BullMQ reminders, and doctor
 
 ## Requirements
 
-- Node.js **22.12+** (Node 22 LTS recommended) and npm.
-- PostgreSQL **17+**, or Docker with Compose.
-- Redis **7+** for caching and background jobs (included in Docker Compose).
+- For local Node development: Node.js **22.12+**, npm, and running PostgreSQL
+  **17+** and Redis **7+** services. Docker can supply both services.
+- For the full Docker setup: Docker Engine/Desktop with **Compose v2**. Node.js,
+  PostgreSQL, and Redis do not need to be installed separately on the host.
+
+Choose either [local Node development](#install-and-run) below or
+[the full Docker setup](#run-the-full-app-with-docker). Both use the same database
+schema and demo seed. Keep ports 3001, 5173, 5432, and 6379 available as applicable.
 
 The assignment says “MERN + PostgreSQL”; this implementation uses PostgreSQL
 instead of MongoDB, as explicitly requested. There is no MongoDB dependency.
@@ -62,22 +67,24 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Start PostgreSQL using either option below.
+Start PostgreSQL and Redis using either option below.
 
-### Option A: Docker database
+### Option A: PostgreSQL and Redis in Docker
 
 ```sh
-docker compose up -d db redis
+docker compose up -d --wait db redis
 ```
 
 The database is `sweety`, user `sweety`, local password `sweety_local`, bound
-only to localhost port 5432. The example DATABASE_URL matches these defaults.
+only to localhost port 5432. Redis is available on localhost port 6379. The
+example DATABASE_URL and REDIS_URL match these defaults.
 Set POSTGRES_PASSWORD before creating the volume to choose another password,
 and update DATABASE_URL accordingly. Compose password overrides must be URI-safe.
 
-### Option B: Your installed PostgreSQL
+### Option B: Installed PostgreSQL and Redis
 
-Using `psql` as a database administrator:
+Start your PostgreSQL and Redis services. Open `psql` as a database administrator
+(for example, `psql -U postgres`) and run this once:
 
 ```sql
 CREATE USER sweety WITH PASSWORD 'sweety_local';
@@ -87,7 +94,7 @@ CREATE DATABASE sweety_test OWNER sweety;
 
 Set DATABASE_URL in `.env` to your PostgreSQL connection string. Migrations
 create the tables, constraints, and indexes; no manual table setup is needed.
-Also start a local Redis 7+ instance and set REDIS_URL. When Redis is temporarily
+Set REDIS_URL to your Redis connection string. When Redis is temporarily
 unavailable, the API keeps working with uncached reports; reminders wait for Redis.
 
 ### Initialize and launch
@@ -98,7 +105,7 @@ npm run db:seed
 npm run dev
 ```
 
-In a second terminal, start the reminder worker:
+In a second terminal, **from the same repository root**, start the reminder worker:
 
 ```sh
 npm run worker
@@ -129,7 +136,10 @@ the demo patient Alex Morgan to Dr. Jamie Chen. Use **Try the doctor demo** on t
 login page to fill those credentials. The doctor sees the patient's daily,
 month-to-date, and previous-month reports and chart, without edit/delete controls.
 DEMO_DOCTOR_EMAIL and DEMO_DOCTOR_PASSWORD override that fixture. Re-running the
-seed preserves readings and updates the two configured demo accounts.
+seed preserves readings and updates the two configured demo accounts. If today's
+dinner reading already exists, re-running the seed keeps it. The login-page fill
+buttons use the public defaults; enter custom credentials manually after changing
+the seed overrides.
 
 ## Doctor accounts and patient assignments
 
@@ -137,7 +147,8 @@ Public sign-up always creates a patient. Doctor creation and assignment are
 owner-only CLI operations requiring the database credentials; users cannot
 grant themselves doctor access or self-assign patients through the API.
 
-Set DOCTOR_PASSWORD in your private `.env`, or in the current shell. Then:
+For local Node development, set DOCTOR_PASSWORD in your private `.env`, or in
+the current shell. Create the patient through the registration page first, then:
 
 ```sh
 npm run doctor:create -- --name "Dr. Taylor" --email doctor@example.com
@@ -151,14 +162,39 @@ reports. Doctors cannot create, edit, or delete patient readings. There is no
 public administrator endpoint. The API validates the current role and assignment
 on every request; hiding UI controls is not the access control.
 
+With the full Docker setup, run owner commands inside `app`. Export DOCTOR_PASSWORD
+in your host shell before creating a doctor; `-e DOCTOR_PASSWORD` passes that
+variable without placing its value in the command arguments:
+
+```sh
+# macOS / Linux: replace the placeholder with your chosen password.
+export DOCTOR_PASSWORD='replace-with-a-strong-password'
+```
+
+```powershell
+# Windows PowerShell: replace the placeholder with your chosen password.
+$env:DOCTOR_PASSWORD='replace-with-a-strong-password'
+```
+
+```sh
+docker compose --profile full exec -e DOCTOR_PASSWORD app npm run doctor:create -- --name "Dr. Taylor" --email doctor@example.com
+docker compose --profile full exec app npm run doctor:assign -- --doctor-email doctor@example.com --patient-email patient@example.com
+docker compose --profile full exec app npm run doctor:unassign -- --doctor-email doctor@example.com --patient-email patient@example.com
+```
+
+For this Docker command, setting DOCTOR_PASSWORD only in the host `.env` is not
+enough: it must be exported in the shell. The seed already creates a demo doctor,
+so these commands are needed only when adding or changing real assignments.
+
 ## Redis caching and BullMQ reminders
 
 Reports are cached for REPORT_CACHE_TTL_SECONDS (default 300). Cache keys include
-the patient ID, database reading revision, and selected date. Reading changes
-clear all that patient's cached report periods. A PostgreSQL trigger increments
-the revision in the same transaction, including when the seed or direct SQL
-changes readings. Thus an older fill cannot become current after a concurrent
-write, and a failed Redis invalidation cannot expose stale reports on recovery.
+the patient ID, database reading revision, and selected date. API create, update,
+and delete operations clear that patient's cached report periods. A PostgreSQL
+trigger increments the revision in the same transaction for every reading change,
+including the seed and direct SQL. Subsequent requests therefore use the new
+revision even if an older cache fill arrives late or Redis invalidation fails.
+Unreachable old keys expire automatically; direct SQL changes do not delete them.
 Authorization runs before any cache lookup. `X-Report-Cache` identifies HIT,
 MISS, or BYPASS when inspecting API responses.
 
@@ -176,8 +212,9 @@ npm run reminders:run
 npm run reminders:run -- --date 2026-11-12
 ```
 
-Jobs retry database failures up to three times with exponential backoff. The date
-is saved in the job before processing, so retries after midnight keep that date.
+Jobs make up to **three total attempts** (the initial attempt plus two retries)
+with exponential backoff. The date is saved in the job before processing, so
+retries after midnight keep that date.
 The database unique key ensures duplicate jobs do not create duplicate reminders.
 Historical sweeps skip accounts created after the selected date. Durable log rows
 are the source of truth; a process crash can interrupt console output after a row
@@ -195,7 +232,7 @@ npm run build
 ```
 
 For the ten real PostgreSQL API integration tests, create `sweety_test` first.
-With the Docker database:
+With the Docker database, run this once (skip it if that database already exists):
 
 ```sh
 docker compose exec db createdb -U sweety sweety_test
@@ -241,10 +278,19 @@ authorization and revocation, zero/three/four-reading reminder cases, duplicate
 jobs, transient database failures and retries, scheduler registration, and safe
 re-running of the additive database migration.
 
+There are **39 tests total**: 5 domain, 12 frontend, 10 API, and 12 service tests.
+`npm test` runs the 17 tests that need no services; the two integration commands
+above run the other 22. The GitHub Actions workflow runs all three groups and
+the production frontend build.
+
 ## Run the full app with Docker
 
+Clone the repository and copy `.env.example` to `.env` as shown above. This mode
+does **not** require `npm ci` on the host. If the local Node development servers
+are running, stop them with Ctrl+C first to release port 3001.
+
 ```sh
-docker compose --profile full up --build -d
+docker compose --profile full up --build --wait
 docker compose --profile full exec app node server/src/seed.js
 ```
 
@@ -263,7 +309,28 @@ docker compose --profile full logs -f worker
 docker compose --profile full exec app npm run reminders:run
 ```
 
-For a real HTTPS deployment, set NODE_ENV=production, APP_ORIGIN to the exact
+The local Compose file supplies its own container DATABASE_URL, REDIS_URL, PORT,
+APP_ORIGIN, and NODE_ENV. It reads the password, timezone, demo credentials, cache
+TTL, and reminder schedule from `.env`. Host URLs such as localhost:5432 are for
+local Node processes; containers connect using the `db` and `redis` service names.
+
+To return to local Node development while keeping the database services running:
+
+```sh
+docker compose --profile full stop app worker
+```
+
+Then run `npm run dev` and `npm run worker` in separate terminals. To stop all
+Docker services while retaining the named data volumes:
+
+```sh
+docker compose --profile full stop
+```
+
+### Production Node deployment
+
+The Compose configuration above is a local demo configuration. For a real HTTPS
+deployment, set NODE_ENV=production, APP_ORIGIN to the exact
 HTTPS origin, and DATABASE_URL to your private PostgreSQL URL. Build with
 `npm ci && npm run build`, run `npm run db:migrate`, then `npm start` and
 `npm run worker` as separate supervised processes. Set REDIS_URL to your private
@@ -297,6 +364,11 @@ tokens stored only as SHA-256 hashes. `.env` is ignored by both Git and Docker.
 No frontend environment variables or third-party API keys are required. Fonts
 are bundled locally; the app makes no Google Fonts requests.
 
+The server and worker load the repository-root `.env` at startup; existing shell
+variables take precedence. Restart both processes after changing configuration.
+The Vite development proxy targets API port 3001; if you change PORT for local
+development, also update `client/vite.config.js` to point to the new port.
+
 ## Structure and API
 
 ```text
@@ -304,7 +376,7 @@ client/src/       React dashboard, auth, reading form, styles, frontend tests
 server/src/       API, cache, queue worker, schema, seed and doctor owner CLI
 server/test/      Domain and real-database API tests
 shared/domain.js  Slot definitions, validation, calendar ranges, statistics
-docs/API.md      Endpoint contract and status/error behavior
+docs/API.md       Endpoint contract and status/error behavior
 screenshots/     Actual browser captures of the running app
 ```
 
@@ -370,5 +442,5 @@ documentation, and the repository's original initialization commit.
 The repository contains this setup guide, `.env.example`, the demo seed at
 `server/src/seed.js`, nine working-app screenshots, automated tests, and the Notes
 section above. Screenshots satisfy the requested screenshots-or-recording option.
-No real credentials or patient data are included. The portable ZIP also includes
-a Git bundle for recovering the same commit history without a GitHub clone.
+No real credentials or patient data are included. Clone the repository to retain
+its commit history; GitHub's Download ZIP option contains the source files only.
