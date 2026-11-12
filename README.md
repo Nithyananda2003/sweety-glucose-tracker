@@ -432,13 +432,6 @@ end-to-end CI browser tests, export, and per-user timezone preferences. At large
 scale, compute report aggregates in SQL instead of loading two months of readings
 (at most roughly 248 rows per user here).
 
-## Submission
-
-Submit this public repository URL:
-[https://github.com/Nithyananda2003/sweety-glucose-tracker](https://github.com/Nithyananda2003/sweety-glucose-tracker).
-The project retains incremental commits for the API, frontend, bonus features,
-documentation, and the repository's original initialization commit.
-
 The repository contains this setup guide, `.env.example`, the demo seed at
 `server/src/seed.js`, nine working-app screenshots, automated tests, and the Notes
 section above. Screenshots satisfy the requested screenshots-or-recording option.
