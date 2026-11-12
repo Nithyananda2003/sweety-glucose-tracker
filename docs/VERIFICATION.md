@@ -12,6 +12,11 @@ database or Redis replacement was used for the integration tests.
 - `npm run build`: passed, including bundled local fonts.
 - `git diff --check`: passed.
 
+The same checks also passed in [GitHub Actions run 43163026918](https://github.com/Nithyananda2003/sweety-glucose-tracker/actions/runs/43163026918)
+on a fresh Ubuntu checkout using Node 22, PostgreSQL 17, and Redis 7. All
+installation, domain/frontend tests, API tests, service tests, and build steps
+completed successfully.
+
 Integration tests also ran with only TEST_DATABASE_URL set, matching CI's
 configuration. They exercise password hashing, session cookies, Secure cookies
 in production mode, expired sessions, logout revocation, access isolation, CRUD,
@@ -54,13 +59,17 @@ show the synthetic fourth reading used to verify the workflow. The final demo
 was restored to its seeded state: three readings for the current day, with
 dinner available to add.
 
+## Published submission
+
+Public repository: [Nithyananda2003/sweety-glucose-tracker](https://github.com/Nithyananda2003/sweety-glucose-tracker).
+The repository's initial commit was preserved and combined with the app's
+incremental implementation history. The public repository was checked for the
+README, environment example, seed script, Docker configuration, CI workflow, and
+screenshots. No `.env` file was published.
+
 ## Limits
 
 - Docker/Compose files were prepared but could not be executed: Docker was not
   installed. The Node build, migration, seed, and real PostgreSQL API flows ran.
-- The GitHub Actions workflow was prepared but has not run on GitHub. It targets
-  Node 22, PostgreSQL 17, and Redis 7; local versions are recorded above.
-- No public GitHub remote was created because no authenticated GitHub connection
-  was available. The local commit history and a portable Git bundle are supplied.
 - The browser timeout during the final screenshot refresh did not invalidate the
   earlier captures. The compiled app login was recovered and verified afterward.

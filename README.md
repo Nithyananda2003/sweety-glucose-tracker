@@ -6,6 +6,8 @@ month-to-date, and previous-month reports.
 
 Repository: [Nithyananda2003/sweety-glucose-tracker](https://github.com/Nithyananda2003/sweety-glucose-tracker)
 
+[![Sweety checks](https://github.com/Nithyananda2003/sweety-glucose-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/Nithyananda2003/sweety-glucose-tracker/actions/workflows/ci.yml)
+
 ![Sweety overview](screenshots/02-overview.jpg)
 
 ## Features
