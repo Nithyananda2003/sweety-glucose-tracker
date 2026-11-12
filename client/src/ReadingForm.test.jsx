@@ -6,7 +6,15 @@ import ReadingForm from './ReadingForm.jsx';
 function setup(props = {}) {
   const onSave = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
-  render(<ReadingForm date="2026-10-15" today="2026-10-15" onSave={onSave} onClose={onClose} {...props} />);
+  render(
+    <ReadingForm
+      date="2026-10-15"
+      today="2026-10-15"
+      onSave={onSave}
+      onClose={onClose}
+      {...props}
+    />,
+  );
   return { user: userEvent.setup(), onSave, onClose };
 }
 describe('ReadingForm', () => {
@@ -28,10 +36,14 @@ describe('ReadingForm', () => {
     await user.selectOptions(screen.getByLabelText('Time slot'), 'after_lunch');
     await user.type(screen.getByRole('spinbutton'), '124');
     await user.click(screen.getByRole('button', { name: 'Save reading' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ date: '2026-10-15', slot: 'after_lunch', value: 124 }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ date: '2026-10-15', slot: 'after_lunch', value: 124 }),
+    );
   });
   test('shows a server duplicate error and allows retrying', async () => {
-    const onSave = vi.fn().mockRejectedValue(new Error('You already have an After lunch reading for this date.'));
+    const onSave = vi
+      .fn()
+      .mockRejectedValue(new Error('You already have an After lunch reading for this date.'));
     const { user } = setup({ onSave });
     await user.type(screen.getByRole('spinbutton'), '120');
     await user.click(screen.getByRole('button', { name: 'Save reading' }));
@@ -39,11 +51,14 @@ describe('ReadingForm', () => {
     expect(screen.getByRole('button', { name: 'Save reading' })).toBeEnabled();
   });
   test('prepopulates an edit and closes on Escape', async () => {
-    const { user, onClose } = setup({ reading: { id: 1, date: '2026-10-14', slot: 'after_dinner', value: 133 } });
+    const { user, onClose } = setup({
+      reading: { id: 1, date: '2026-10-14', slot: 'after_dinner', value: 133 },
+    });
     expect(screen.getByLabelText('Date')).toHaveValue('2026-10-14');
     expect(screen.getByRole('spinbutton')).toHaveValue(133);
     expect(screen.getByLabelText('Time slot')).toHaveValue('after_dinner');
-    await user.keyboard('{Escape}'); expect(onClose).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
   test('rejects a future date even when native date validation is bypassed', async () => {
     const { user, onSave } = setup({ date: '2026-10-16' });

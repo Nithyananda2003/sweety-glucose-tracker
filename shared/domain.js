@@ -1,20 +1,29 @@
 export const SLOTS = [
   { key: 'morning', label: 'Morning', detail: 'Fasting', time: 'Before breakfast' },
-  { key: 'after_breakfast', label: 'After breakfast', detail: 'Post-meal', time: 'After your breakfast' },
+  {
+    key: 'after_breakfast',
+    label: 'After breakfast',
+    detail: 'Post-meal',
+    time: 'After your breakfast',
+  },
   { key: 'after_lunch', label: 'After lunch', detail: 'Post-meal', time: 'After your lunch' },
   { key: 'after_dinner', label: 'After dinner', detail: 'Post-meal', time: 'After your dinner' },
 ];
 
 export function todayInZone(timezone = 'Asia/Kolkata', now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).formatToParts(now);
   const get = (type) => parts.find((part) => part.type === type).value;
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 export function isDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '1900-01-01') return false;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '1900-01-01')
+    return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
@@ -38,7 +47,10 @@ export function reportRanges(date) {
   return {
     daily: { from: date, to: date },
     monthToDate: { from: iso(new Date(Date.UTC(year, month, 1))), to: date },
-    monthly: { from: iso(new Date(Date.UTC(year, month - 1, 1))), to: iso(new Date(Date.UTC(year, month, 0))) },
+    monthly: {
+      from: iso(new Date(Date.UTC(year, month - 1, 1))),
+      to: iso(new Date(Date.UTC(year, month, 0))),
+    },
   };
 }
 
