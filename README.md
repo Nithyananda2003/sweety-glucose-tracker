@@ -4,6 +4,8 @@ A small, private blood glucose journal built with **React, Node.js, Express,
 and PostgreSQL**. Log four daily check-ins, edit your history, and see daily,
 month-to-date, and previous-month reports.
 
+Repository: [Nithyananda2003/sweety-glucose-tracker](https://github.com/Nithyananda2003/sweety-glucose-tracker)
+
 ![Sweety overview](screenshots/02-overview.jpg)
 
 ## Features
@@ -41,6 +43,8 @@ instead of MongoDB, as explicitly requested. There is no MongoDB dependency.
 Run every command from this repository's root unless noted otherwise.
 
 ```sh
+git clone https://github.com/Nithyananda2003/sweety-glucose-tracker.git
+cd sweety-glucose-tracker
 npm ci
 ```
 
@@ -354,18 +358,15 @@ end-to-end CI browser tests, export, and per-user timezone preferences. At large
 scale, compute report aggregates in SQL instead of loading two months of readings
 (at most roughly 248 rows per user here).
 
-## Publishing to GitHub
+## Submission
 
-This project includes a local Git repository with incremental commits. A remote
-was not created without an authenticated GitHub connection. To publish manually,
-create an empty **public** repository named `sweety` on your GitHub account, then:
+Submit this public repository URL:
+[https://github.com/Nithyananda2003/sweety-glucose-tracker](https://github.com/Nithyananda2003/sweety-glucose-tracker).
+The project retains incremental commits for the API, frontend, bonus features,
+documentation, and the repository's original initialization commit.
 
-```sh
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/sweety.git
-git push -u origin main
-```
-
-Submit that actual repository URL. Do not upload `.env` or real patient data.
-If using the supplied source ZIP, use the included Git bundle to recover the
-commit history before pushing (instructions are in the delivery note).
+The repository contains this setup guide, `.env.example`, the demo seed at
+`server/src/seed.js`, nine working-app screenshots, automated tests, and the Notes
+section above. Screenshots satisfy the requested screenshots-or-recording option.
+No real credentials or patient data are included. The portable ZIP also includes
+a Git bundle for recovering the same commit history without a GitHub clone.
